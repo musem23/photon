@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,13 +27,18 @@ const (
 	stateComplete
 	stateSettings
 	stateSelectOutputDir
+	stateBatchSelect
+	stateBatchConfirm
+	stateBatchConverting
+	stateBatchComplete
 )
 
 type fileEntry struct {
-	name  string
-	path  string
-	isDir bool
-	isImg bool
+	name     string
+	path     string
+	isDir    bool
+	isImg    bool
+	selected bool
 }
 
 type Model struct {
@@ -68,6 +74,20 @@ type Model struct {
 
 	// Settings
 	settingIndex int
+
+	// Batch mode
+	batchMode      bool
+	selectedFiles  []string
+	batchOutputDir string
+	batchResults   []batchResult
+	batchIndex     int
+}
+
+type batchResult struct {
+	input   string
+	output  string
+	success bool
+	err     error
 }
 
 func NewModel() Model {
@@ -140,6 +160,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateSettings(msg)
 		case stateSelectOutputDir:
 			return m.updateOutputDirBrowser(msg)
+		case stateBatchSelect:
+			return m.updateBatchSelect(msg)
+		case stateBatchConfirm:
+			return m.updateBatchConfirm(msg)
+		case stateBatchComplete:
+			if msg.String() != "" {
+				m.state = stateMenu
+			}
+			return m, nil
 		}
 
 	case spinner.TickMsg:
@@ -156,6 +185,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.config.AddRecentFile(m.inputFile)
 			m.config.Save()
 		}
+		return m, nil
+
+	case batchDoneMsg:
+		m.converting = false
+		m.batchResults = msg.results
+		m.state = stateBatchComplete
 		return m, nil
 	}
 
@@ -175,11 +210,14 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		switch m.menuIndex {
 		case 0: // Convert Image
+			m.batchMode = false
 			m.loadFiles(m.currentDir)
 			m.state = stateSelectInput
 		case 1: // Batch Convert
+			m.batchMode = true
+			m.selectedFiles = []string{}
 			m.loadFiles(m.currentDir)
-			m.state = stateSelectInput
+			m.state = stateBatchSelect
 		case 3: // Settings
 			m.state = stateSettings
 		case 4: // Quit
@@ -323,7 +361,11 @@ func (m Model) updateQuality(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		m.state = stateConfirm
+		if m.batchMode {
+			m.state = stateBatchConfirm
+		} else {
+			m.state = stateConfirm
+		}
 	}
 	return m, nil
 }
@@ -426,6 +468,10 @@ type conversionDoneMsg struct {
 	err error
 }
 
+type batchDoneMsg struct {
+	results []batchResult
+}
+
 func (m Model) doConvert() tea.Cmd {
 	return func() tea.Msg {
 		opts := image.Options{
@@ -434,6 +480,122 @@ func (m Model) doConvert() tea.Cmd {
 		err := image.Convert(m.inputFile, m.outputFile, opts)
 		return conversionDoneMsg{err: err}
 	}
+}
+
+func (m Model) doBatchConvert() tea.Cmd {
+	return func() tea.Msg {
+		results := []batchResult{}
+		opts := image.Options{
+			Quality: m.quality,
+		}
+
+		for _, inputPath := range m.selectedFiles {
+			ext := filepath.Ext(inputPath)
+			base := strings.TrimSuffix(filepath.Base(inputPath), ext)
+			outputPath := filepath.Join(m.batchOutputDir, base+"."+m.outputFormat)
+
+			err := image.Convert(inputPath, outputPath, opts)
+			results = append(results, batchResult{
+				input:   inputPath,
+				output:  outputPath,
+				success: err == nil,
+				err:     err,
+			})
+		}
+
+		return batchDoneMsg{results: results}
+	}
+}
+
+func (m Model) updateBatchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	maxVisible := m.height - 15
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+
+	switch msg.String() {
+	case "up", "k":
+		if m.fileIndex > 0 {
+			m.fileIndex--
+			if m.fileIndex < m.scrollOffset {
+				m.scrollOffset = m.fileIndex
+			}
+		}
+	case "down", "j":
+		if m.fileIndex < len(m.files)-1 {
+			m.fileIndex++
+			if m.fileIndex >= m.scrollOffset+maxVisible {
+				m.scrollOffset = m.fileIndex - maxVisible + 1
+			}
+		}
+	case " ": // Space to toggle selection
+		if m.fileIndex < len(m.files) {
+			entry := &m.files[m.fileIndex]
+			if entry.isImg {
+				entry.selected = !entry.selected
+				if entry.selected {
+					m.selectedFiles = append(m.selectedFiles, entry.path)
+				} else {
+					// Remove from selected
+					for i, p := range m.selectedFiles {
+						if p == entry.path {
+							m.selectedFiles = append(m.selectedFiles[:i], m.selectedFiles[i+1:]...)
+							break
+						}
+					}
+				}
+			}
+		}
+	case "a": // Select all images
+		m.selectedFiles = []string{}
+		for i := range m.files {
+			if m.files[i].isImg {
+				m.files[i].selected = true
+				m.selectedFiles = append(m.selectedFiles, m.files[i].path)
+			}
+		}
+	case "n": // Deselect all
+		m.selectedFiles = []string{}
+		for i := range m.files {
+			m.files[i].selected = false
+		}
+	case "enter":
+		if m.fileIndex < len(m.files) {
+			entry := m.files[m.fileIndex]
+			if entry.isDir {
+				m.loadFiles(entry.path)
+			} else if len(m.selectedFiles) > 0 {
+				m.config.LastInputDir = m.currentDir
+				m.state = stateSelectFormat
+			}
+		}
+	case "c": // Continue with selection
+		if len(m.selectedFiles) > 0 {
+			m.config.LastInputDir = m.currentDir
+			m.state = stateSelectFormat
+		}
+	case "tab":
+		m.config.ShowHiddenFiles = !m.config.ShowHiddenFiles
+		m.loadFiles(m.currentDir)
+	}
+	return m, nil
+}
+
+func (m Model) updateBatchConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "enter":
+		// Create output directory with timestamp
+		timestamp := time.Now().Format("2006-01-02_15-04-05")
+		m.batchOutputDir = filepath.Join(m.currentDir, fmt.Sprintf("photon_%s_%s", m.outputFormat, timestamp))
+		os.MkdirAll(m.batchOutputDir, 0755)
+
+		m.state = stateBatchConverting
+		m.converting = true
+		return m, m.doBatchConvert()
+	case "n", "esc":
+		m.state = stateMenu
+	}
+	return m, nil
 }
 
 func (m Model) View() string {
@@ -464,6 +626,14 @@ func (m Model) View() string {
 		s.WriteString(m.viewSettings())
 	case stateSelectOutputDir:
 		s.WriteString(m.viewOutputDirBrowser())
+	case stateBatchSelect:
+		s.WriteString(m.viewBatchSelect())
+	case stateBatchConfirm:
+		s.WriteString(m.viewBatchConfirm())
+	case stateBatchConverting:
+		s.WriteString(m.viewBatchConverting())
+	case stateBatchComplete:
+		s.WriteString(m.viewBatchComplete())
 	}
 
 	// Footer help
@@ -576,10 +746,11 @@ func (m Model) viewQuality() string {
 	// Quality bar
 	barWidth := 40
 	filled := (m.quality * barWidth) / 100
+	empty := barWidth - filled
 
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-	s.WriteString(SliderFilled.Render(bar[:filled]))
-	s.WriteString(SliderTrack.Render(bar[filled:]))
+	filledBar := SliderFilled.Render(strings.Repeat("=", filled))
+	emptyBar := SliderTrack.Render(strings.Repeat("-", empty))
+	s.WriteString("[" + filledBar + emptyBar + "]")
 	s.WriteString(fmt.Sprintf("  %d%%\n\n", m.quality))
 
 	// Quality hint
@@ -720,6 +891,116 @@ func boolIcon(b bool) string {
 	return lipgloss.NewStyle().Foreground(muted).Render("○")
 }
 
+func (m Model) viewBatchSelect() string {
+	var s strings.Builder
+	s.WriteString(TitleStyle.Render("Batch Select Images") + "\n")
+	s.WriteString(SubtitleStyle.Render(m.currentDir) + "\n")
+	s.WriteString(WarningStyle.Render(fmt.Sprintf("Selected: %d images", len(m.selectedFiles))) + "\n\n")
+
+	maxVisible := m.height - 17
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+
+	end := m.scrollOffset + maxVisible
+	if end > len(m.files) {
+		end = len(m.files)
+	}
+
+	for i := m.scrollOffset; i < end; i++ {
+		entry := m.files[i]
+		cursor := "  "
+		var style lipgloss.Style
+
+		if i == m.fileIndex {
+			cursor = SelectedItemStyle.Render("> ")
+		}
+
+		checkbox := "[ ] "
+		if entry.selected {
+			checkbox = SuccessStyle.Render("[x] ")
+		}
+
+		icon := "  "
+		if entry.isDir {
+			icon = "D "
+			style = DirStyle
+			checkbox = "    "
+		} else if entry.isImg {
+			icon = "I "
+			style = ImageFileStyle
+		} else {
+			icon = "F "
+			style = FileStyle
+			checkbox = "    "
+		}
+
+		if i == m.fileIndex {
+			style = SelectedItemStyle
+		}
+
+		s.WriteString(cursor + checkbox + icon + style.Render(entry.name) + "\n")
+	}
+
+	if len(m.files) > maxVisible {
+		s.WriteString(fmt.Sprintf("\n%s", SubtitleStyle.Render(fmt.Sprintf("(%d/%d)", m.fileIndex+1, len(m.files)))))
+	}
+
+	return BoxStyle.Render(s.String())
+}
+
+func (m Model) viewBatchConfirm() string {
+	var s strings.Builder
+	s.WriteString(TitleStyle.Render("Confirm Batch Conversion") + "\n\n")
+
+	s.WriteString(fmt.Sprintf("Files:   %s\n", WarningStyle.Render(fmt.Sprintf("%d images", len(m.selectedFiles)))))
+	s.WriteString(fmt.Sprintf("Format:  %s\n", FormatBadge.Render(strings.ToUpper(m.outputFormat))))
+	s.WriteString(fmt.Sprintf("Quality: %d%%\n", m.quality))
+	s.WriteString(fmt.Sprintf("Output:  %s\n\n", SubtitleStyle.Render("New folder in current directory")))
+
+	s.WriteString(WarningStyle.Render("Proceed with batch conversion? (y/n)"))
+
+	return BoxStyle.Render(s.String())
+}
+
+func (m Model) viewBatchConverting() string {
+	var s strings.Builder
+	s.WriteString(TitleStyle.Render("Converting...") + "\n\n")
+	s.WriteString(m.spinner.View() + fmt.Sprintf(" Processing %d images...", len(m.selectedFiles)))
+	return BoxStyle.Render(s.String())
+}
+
+func (m Model) viewBatchComplete() string {
+	var s strings.Builder
+
+	successCount := 0
+	for _, r := range m.batchResults {
+		if r.success {
+			successCount++
+		}
+	}
+
+	if successCount == len(m.batchResults) {
+		s.WriteString(SuccessStyle.Render("Batch Complete") + "\n\n")
+	} else {
+		s.WriteString(WarningStyle.Render("Batch Complete (with errors)") + "\n\n")
+	}
+
+	s.WriteString(fmt.Sprintf("Converted: %d/%d images\n", successCount, len(m.batchResults)))
+	s.WriteString(fmt.Sprintf("Output:    %s\n\n", SubtitleStyle.Render(m.batchOutputDir)))
+
+	// Show errors if any
+	for _, r := range m.batchResults {
+		if !r.success {
+			s.WriteString(ErrorStyle.Render("x ") + filepath.Base(r.input) + ": " + r.err.Error() + "\n")
+		}
+	}
+
+	s.WriteString("\nPress any key to continue...")
+
+	return BoxStyle.Render(s.String())
+}
+
 func (m Model) viewHelp() string {
 	var help string
 	switch m.state {
@@ -735,6 +1016,10 @@ func (m Model) viewHelp() string {
 		help = "↑/↓: navigate • ←/→: adjust • enter: toggle • esc: back"
 	case stateSelectOutputDir:
 		help = "↑/↓: navigate • enter: open dir • s: select current • esc: back"
+	case stateBatchSelect:
+		help = "↑/↓: navigate • space: select • a: all • n: none • c: continue • esc: back"
+	case stateBatchConfirm:
+		help = "y: confirm • n: cancel"
 	default:
 		help = "esc: back to menu • q: quit"
 	}

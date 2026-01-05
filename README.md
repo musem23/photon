@@ -66,6 +66,7 @@ photon
 
 Navigate with arrow keys, adjust quality with `←/→`, press Enter to convert.
 
+**Single file conversion:**
 | Key | Action |
 |-----|--------|
 | `↑/↓` | Navigate files |
@@ -73,6 +74,16 @@ Navigate with arrow keys, adjust quality with `←/→`, press Enter to convert.
 | `Enter` | Select/Convert |
 | `Tab` | Show hidden files |
 | `q` | Quit |
+
+**Batch conversion:**
+| Key | Action |
+|-----|--------|
+| `Space` | Toggle file selection |
+| `a` | Select all images |
+| `n` | Deselect all |
+| `c` | Continue with selection |
+
+Batch mode creates a new folder (e.g., `photon_jpg_2024-01-15_14-30-00`) containing all converted images.
 
 ### CLI mode
 
