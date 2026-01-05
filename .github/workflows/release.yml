@@ -9,76 +9,45 @@ permissions:
   contents: write
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build:
     strategy:
       matrix:
         include:
-          - goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
             name: photon-macos-amd64
-          - goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
             name: photon-macos-arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            name: photon-linux-amd64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            name: photon-windows-amd64.exe
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-      - name: Install libheif
-        run: brew install libheif pkg-config
       - name: Build
         env:
+          GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 1
+          CGO_ENABLED: 0
         run: go build -ldflags="-s -w" -o ${{ matrix.name }} ./cmd/photon
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
 
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-      - name: Install libheif
-        run: sudo apt-get update && sudo apt-get install -y libheif-dev
-      - name: Build
-        env:
-          CGO_ENABLED: 1
-        run: go build -ldflags="-s -w" -o photon-linux-amd64 ./cmd/photon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: photon-linux-amd64
-          path: photon-linux-amd64
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-libheif mingw-w64-x86_64-pkg-config
-      - name: Build
-        shell: msys2 {0}
-        run: |
-          export PATH="/mingw64/bin:$PATH"
-          export CGO_ENABLED=1
-          export CC=gcc
-          go build -ldflags="-s -w" -o photon-windows-amd64.exe ./cmd/photon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: photon-windows-amd64.exe
-          path: photon-windows-amd64.exe
-
   release:
-    needs: [build-macos, build-linux, build-windows]
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

@@ -9,15 +9,16 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/chai2010/webp"
-	"github.com/strukturag/libheif/go/heif"
 	"golang.org/x/image/bmp"
 	"golang.org/x/image/tiff"
+	"golang.org/x/image/webp"
 )
+
+var heifSupported bool
+var webpWriteSupported bool
 
 type Format string
 
@@ -90,11 +91,24 @@ func Decode(r io.Reader) (image.Image, Format, error) {
 		return img, format, nil
 	}
 
+	// Try webp first
+	if isWebP(data) {
+		img, err := webp.Decode(bytes.NewReader(data))
+		if err != nil {
+			return nil, "", fmt.Errorf("decode webp: %w", err)
+		}
+		return img, FormatWebP, nil
+	}
+
 	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, "", fmt.Errorf("decode image: %w", err)
 	}
 	return img, Format(format), nil
+}
+
+func isWebP(data []byte) bool {
+	return len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP"
 }
 
 func isHEIF(data []byte) bool {
@@ -121,29 +135,6 @@ func isAVIF(data []byte) bool {
 	return brand == "avif" || brand == "avis"
 }
 
-func decodeHEIF(data []byte) (image.Image, error) {
-	ctx, err := heif.NewContext()
-	if err != nil {
-		return nil, fmt.Errorf("create heif context: %w", err)
-	}
-
-	if err := ctx.ReadFromMemory(data); err != nil {
-		return nil, fmt.Errorf("read heif data: %w", err)
-	}
-
-	handle, err := ctx.GetPrimaryImageHandle()
-	if err != nil {
-		return nil, fmt.Errorf("get primary image: %w", err)
-	}
-
-	img, err := handle.DecodeImage(heif.ColorspaceUndefined, heif.ChromaUndefined, nil)
-	if err != nil {
-		return nil, fmt.Errorf("decode heif image: %w", err)
-	}
-
-	return img.GetImage()
-}
-
 func Encode(w io.Writer, img image.Image, format Format, quality int) error {
 	switch format {
 	case FormatPNG:
@@ -153,7 +144,7 @@ func Encode(w io.Writer, img image.Image, format Format, quality int) error {
 	case FormatGIF:
 		return gif.Encode(w, img, nil)
 	case FormatWebP:
-		return webp.Encode(w, img, &webp.Options{Quality: float32(quality)})
+		return encodeWebP(w, img, quality)
 	case FormatBMP:
 		return bmp.Encode(w, img)
 	case FormatTIFF:
@@ -175,34 +166,6 @@ func toRGBA(img image.Image) *image.RGBA {
 	rgba := image.NewRGBA(bounds)
 	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
 	return rgba
-}
-
-func encodeAVIF(w io.Writer, img image.Image, quality int) error {
-	rgba := toRGBA(img)
-	ctx, err := heif.EncodeFromImage(rgba, heif.CompressionAV1, quality, heif.LosslessModeDisabled, heif.LoggingLevelNone)
-	if err != nil {
-		return fmt.Errorf("encode avif: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp("", "avif-*.avif")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
-
-	if err := ctx.WriteToFile(tmpPath); err != nil {
-		return fmt.Errorf("write avif: %w", err)
-	}
-
-	data, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return fmt.Errorf("read avif: %w", err)
-	}
-
-	_, err = w.Write(data)
-	return err
 }
 
 func IsSupported(format Format) bool {

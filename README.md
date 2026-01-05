@@ -93,11 +93,13 @@ photon batch ./images --from png --to avif -q 80
 | PNG | Yes | Yes | Lossless with alpha |
 | JPEG | Yes | Yes | Quality 1-100 |
 | GIF | Yes | Yes | 256 colors |
-| WebP | Yes | Yes | Modern format |
+| WebP | Yes | * | Modern format |
 | BMP | Yes | Yes | Uncompressed |
 | TIFF | Yes | Yes | Professional |
-| AVIF | Yes | Yes | Best compression |
-| HEIC | Yes | No | Apple format (read-only) |
+| AVIF | * | * | Best compression |
+| HEIC | * | No | Apple format |
+
+\* Pre-built binaries: WebP read-only, no HEIC/AVIF. Build from source with CGO for full support.
 
 ## Configuration
 
