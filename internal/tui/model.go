@@ -584,9 +584,15 @@ func (m Model) updateBatchSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateBatchConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "enter":
-		// Create output directory with timestamp
-		timestamp := time.Now().Format("2006-01-02_15-04-05")
-		m.batchOutputDir = filepath.Join(m.currentDir, fmt.Sprintf("photon_%s_%s", m.outputFormat, timestamp))
+		// Create output directory in ~/Downloads/photon with timestamp
+		if err := m.config.EnsureOutputDir(); err == nil {
+			timestamp := time.Now().Format("2006-01-02_15-04-05")
+			m.batchOutputDir = filepath.Join(m.config.OutputDir, fmt.Sprintf("batch_%s_%s", m.outputFormat, timestamp))
+		} else {
+			// Fallback to current directory
+			timestamp := time.Now().Format("2006-01-02_15-04-05")
+			m.batchOutputDir = filepath.Join(m.currentDir, fmt.Sprintf("batch_%s_%s", m.outputFormat, timestamp))
+		}
 		os.MkdirAll(m.batchOutputDir, 0755)
 
 		m.state = stateBatchConverting
@@ -956,7 +962,7 @@ func (m Model) viewBatchConfirm() string {
 	s.WriteString(fmt.Sprintf("🖼  Files:   %s\n", WarningStyle.Render(fmt.Sprintf("%d images", len(m.selectedFiles)))))
 	s.WriteString(fmt.Sprintf("📄 Format:  %s\n", FormatBadge.Render(strings.ToUpper(m.outputFormat))))
 	s.WriteString(fmt.Sprintf("⚙  Quality: %d%%\n", m.quality))
-	s.WriteString(fmt.Sprintf("📁 Output:  %s\n\n", SubtitleStyle.Render("New folder in current directory")))
+	s.WriteString(fmt.Sprintf("📁 Output:  %s\n\n", SubtitleStyle.Render(m.config.OutputDir)))
 
 	s.WriteString(WarningStyle.Render("Proceed with batch conversion? (y/n)"))
 

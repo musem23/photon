@@ -83,7 +83,7 @@ Navigate with arrow keys, adjust quality with `←/→`, press Enter to convert.
 | `n` | Deselect all |
 | `c` | Continue with selection |
 
-Batch mode creates a new folder (e.g., `photon_jpg_2024-01-15_14-30-00`) containing all converted images.
+Batch mode creates a new folder in `~/Downloads/photon/` (e.g., `batch_jpg_2024-01-15_14-30-00`) containing all converted images.
 
 ### CLI mode
 
