@@ -102,11 +102,11 @@ func NewModel() Model {
 		config:    cfg,
 		menuIndex: 0,
 		menuItems: []string{
-			"Convert Image",
-			"Batch Convert",
-			"Recent Files",
-			"Settings",
-			"Quit",
+			"🖼  Convert Image",
+			"📚 Batch Convert",
+			"🕐 Recent Files",
+			"⚙  Settings",
+			"🚪 Quit",
 		},
 		formats:    []string{"png", "jpg", "gif", "webp", "bmp", "tiff", "avif"},
 		quality:    cfg.DefaultQuality,
@@ -776,10 +776,10 @@ func (m Model) viewConfirm() string {
 	var s strings.Builder
 	s.WriteString(TitleStyle.Render("Confirm Conversion") + "\n\n")
 
-	s.WriteString("Input:   " + ImageFileStyle.Render(filepath.Base(m.inputFile)) + "\n")
-	s.WriteString("Output:  " + ImageFileStyle.Render(filepath.Base(m.outputFile)) + "\n")
-	s.WriteString("Format:  " + FormatBadge.Render(strings.ToUpper(m.outputFormat)) + "\n")
-	s.WriteString(fmt.Sprintf("Quality: %d%%\n\n", m.quality))
+	s.WriteString("🖼  Input:   " + ImageFileStyle.Render(filepath.Base(m.inputFile)) + "\n")
+	s.WriteString("📄 Output:  " + ImageFileStyle.Render(filepath.Base(m.outputFile)) + "\n")
+	s.WriteString("📁 Format:  " + FormatBadge.Render(strings.ToUpper(m.outputFormat)) + "\n")
+	s.WriteString(fmt.Sprintf("⚙  Quality: %d%%\n\n", m.quality))
 
 	s.WriteString(WarningStyle.Render("Proceed with conversion? (y/n)"))
 
@@ -801,11 +801,11 @@ func (m Model) viewComplete() string {
 		s.WriteString(m.convErr.Error())
 	} else {
 		s.WriteString(SuccessStyle.Render("✓ Conversion Complete") + "\n\n")
-		s.WriteString("Output: " + ImageFileStyle.Render(m.outputFile) + "\n")
+		s.WriteString("📄 Output: " + ImageFileStyle.Render(m.outputFile) + "\n")
 
 		if info, err := os.Stat(m.outputFile); err == nil {
 			size := float64(info.Size()) / 1024
-			s.WriteString(fmt.Sprintf("Size: %.1f KB", size))
+			s.WriteString(fmt.Sprintf("📊 Size:   %.1f KB", size))
 		}
 	}
 
@@ -913,24 +913,24 @@ func (m Model) viewBatchSelect() string {
 		var style lipgloss.Style
 
 		if i == m.fileIndex {
-			cursor = SelectedItemStyle.Render("> ")
+			cursor = SelectedItemStyle.Render("▸ ")
 		}
 
 		checkbox := "[ ] "
 		if entry.selected {
-			checkbox = SuccessStyle.Render("[x] ")
+			checkbox = SuccessStyle.Render("[✓] ")
 		}
 
-		icon := "  "
+		icon := "   "
 		if entry.isDir {
-			icon = "D "
+			icon = "📁 "
 			style = DirStyle
 			checkbox = "    "
 		} else if entry.isImg {
-			icon = "I "
+			icon = "🖼  "
 			style = ImageFileStyle
 		} else {
-			icon = "F "
+			icon = "📄 "
 			style = FileStyle
 			checkbox = "    "
 		}
@@ -953,10 +953,10 @@ func (m Model) viewBatchConfirm() string {
 	var s strings.Builder
 	s.WriteString(TitleStyle.Render("Confirm Batch Conversion") + "\n\n")
 
-	s.WriteString(fmt.Sprintf("Files:   %s\n", WarningStyle.Render(fmt.Sprintf("%d images", len(m.selectedFiles)))))
-	s.WriteString(fmt.Sprintf("Format:  %s\n", FormatBadge.Render(strings.ToUpper(m.outputFormat))))
-	s.WriteString(fmt.Sprintf("Quality: %d%%\n", m.quality))
-	s.WriteString(fmt.Sprintf("Output:  %s\n\n", SubtitleStyle.Render("New folder in current directory")))
+	s.WriteString(fmt.Sprintf("🖼  Files:   %s\n", WarningStyle.Render(fmt.Sprintf("%d images", len(m.selectedFiles)))))
+	s.WriteString(fmt.Sprintf("📄 Format:  %s\n", FormatBadge.Render(strings.ToUpper(m.outputFormat))))
+	s.WriteString(fmt.Sprintf("⚙  Quality: %d%%\n", m.quality))
+	s.WriteString(fmt.Sprintf("📁 Output:  %s\n\n", SubtitleStyle.Render("New folder in current directory")))
 
 	s.WriteString(WarningStyle.Render("Proceed with batch conversion? (y/n)"))
 
@@ -981,18 +981,18 @@ func (m Model) viewBatchComplete() string {
 	}
 
 	if successCount == len(m.batchResults) {
-		s.WriteString(SuccessStyle.Render("Batch Complete") + "\n\n")
+		s.WriteString(SuccessStyle.Render("✓ Batch Complete") + "\n\n")
 	} else {
-		s.WriteString(WarningStyle.Render("Batch Complete (with errors)") + "\n\n")
+		s.WriteString(WarningStyle.Render("⚠ Batch Complete (with errors)") + "\n\n")
 	}
 
-	s.WriteString(fmt.Sprintf("Converted: %d/%d images\n", successCount, len(m.batchResults)))
-	s.WriteString(fmt.Sprintf("Output:    %s\n\n", SubtitleStyle.Render(m.batchOutputDir)))
+	s.WriteString(fmt.Sprintf("🖼  Converted: %d/%d images\n", successCount, len(m.batchResults)))
+	s.WriteString(fmt.Sprintf("📁 Output:    %s\n\n", SubtitleStyle.Render(m.batchOutputDir)))
 
 	// Show errors if any
 	for _, r := range m.batchResults {
 		if !r.success {
-			s.WriteString(ErrorStyle.Render("x ") + filepath.Base(r.input) + ": " + r.err.Error() + "\n")
+			s.WriteString(ErrorStyle.Render("✗ ") + filepath.Base(r.input) + ": " + r.err.Error() + "\n")
 		}
 	}
 
